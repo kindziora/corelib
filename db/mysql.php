@@ -32,6 +32,7 @@ class corelib_db_mysql implements corelib_models {
         if ($table) {
             $this->model = $table;
         }
+        $this->validation = new corelib_validation( );
     }
 
     /**
@@ -219,30 +220,45 @@ class corelib_db_mysql implements corelib_models {
 
         $data = $this->cleanData($data);
         $data['created'] = date('Y-m-d H:i:s', time());
-        if ($this->validation = new corelib_validation( )) {
-            $res = $this->validateInput($data);
+        if ($res = $this->validateInput($data)) {
             if (!is_bool($res))
                 return $res;
         }
-
-        $i = 0;
-        $cdata = count($data);
-        $queryString = '';
-        $valueString = '';
-
+        
+        $queryString = $this->_querystring($data, function($key, $value, $comma) {
+           return ' `' . $key . '` ' . $comma;
+        });
+        
+        $valueString = $this->_querystring($data, function($key, $value, $comma) {
+           return "'" . $value . "'" . $comma;
+        });
+        
+        $this->query("INSERT INTO `" . $this->model . "` (" . $queryString . ") VALUES (" . $valueString . ")");
+        return mysql_insert_id();
+    }
+    
+   /**
+    * build cleaned query string by [key => value] array
+    * @param array $data
+    * @param type $injectFunction
+    * @return type 
+    */
+    protected function _querystring( array $data = array(), $injectFunction ) {
+        $i              = 0;
+        $cdata          = count($data);
+        $queryString    = '';
+        
         foreach ($data as $key => $val) {
             $i++;
             $comma = '';
             if ($i < $cdata)
                 $comma .= ",";
-
-            $queryString .= ' `' . $key . '` ' . $comma;
-            $valueString .= "'" . ($val) . "'" . $comma;
+            $queryString .= $injectFunction(mysql_escape_string($key), mysql_escape_string($val), mysql_escape_string($comma));
         }
-        $this->query("INSERT INTO `" . $this->model . "` (" . $queryString . ") VALUES (" . $valueString . ")");
-        return mysql_insert_id();
+        return $queryString;
     }
-
+    
+    
     /**
      * 
      * @param array $data
@@ -253,23 +269,14 @@ class corelib_db_mysql implements corelib_models {
 
         $data['updated'] = date('Y-m-d H:i:s', time());
 
-        if ($this->validation = new corelib_validation( )) {
-            $res = $this->validateInput($data);
+        if ( $res = $this->validateInput($data) ) {
             if (!is_bool($res))
                 return $res;
         }
-
-        $queryString = '';
-        $i = 0;
-        $cdata = count($data);
-
-        foreach ($data as $key => $val) {
-            $i++;
-            $comma = '';
-            if ($i < $cdata)
-                $comma .= ",";
-            $queryString .= ' `' . $key . '` =' . "'$val'" . $comma;
-        }
+        
+        $queryString = $this->_querystring($data, function($key, $value, $comma) {
+           return  ' `' . $key . '` =' . "'$value'" . $comma;
+        });
 
         if(!$this->query("UPDATE `$this->model` SET " . $queryString . $this->_buildWhereQuery($where)))
             return false;
